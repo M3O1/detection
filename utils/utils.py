@@ -251,10 +251,10 @@ def get_yolo_boxes(model, images, net_h, net_w, anchors, obj_thresh, nms_thresh)
 
     # run the prediction
     batch_output = model.predict_on_batch(batch_input)
-    batch_boxes  = [None]*nb_images
+    batch_boxes  = []
 
-    for i in range(nb_images):
-        yolos = [batch_output[0][i], batch_output[1][i], batch_output[2][i]]
+    for pred_yolo_1, pred_yolo_2, pred_yolo_3 in zip(*batch_output):
+        yolos = [pred_yolo_1, pred_yolo_2, pred_yolo_3]
         boxes = []
 
         # decode the output of the network
@@ -268,7 +268,7 @@ def get_yolo_boxes(model, images, net_h, net_w, anchors, obj_thresh, nms_thresh)
         # suppress non-maximal boxes
         do_nms(boxes, nms_thresh)
 
-        batch_boxes[i] = boxes
+        batch_boxes.append(boxes)
 
     return batch_boxes
 
