@@ -14,8 +14,8 @@ def makedirs(path):
         if not os.path.isdir(path):
             raise
 
-def evaluate(model, 
-             generator, 
+def evaluate(model,
+             generator,
              iou_threshold=0.5,
              obj_thresh=0.5,
              nms_thresh=0.45,
@@ -36,7 +36,7 @@ def evaluate(model,
         save_path       : The path to save images with visualized detections to.
     # Returns
         A dict mapping class names to mAP scores.
-    """    
+    """
     # gather all detections and annotations
     all_detections     = [[None for i in range(generator.num_classes())] for j in range(generator.size())]
     all_annotations    = [[None for i in range(generator.num_classes())] for j in range(generator.size())]
@@ -48,31 +48,31 @@ def evaluate(model,
         pred_boxes = get_yolo_boxes(model, raw_image, net_h, net_w, generator.get_anchors(), obj_thresh, nms_thresh)[0]
 
         score = np.array([box.get_score() for box in pred_boxes])
-        pred_labels = np.array([box.label for box in pred_boxes])        
-        
+        pred_labels = np.array([box.label for box in pred_boxes])
+
         if len(pred_boxes) > 0:
-            pred_boxes = np.array([[box.xmin, box.ymin, box.xmax, box.ymax, box.get_score()] for box in pred_boxes]) 
+            pred_boxes = np.array([[box.xmin, box.ymin, box.xmax, box.ymax, box.get_score()] for box in pred_boxes])
         else:
-            pred_boxes = np.array([[]])  
-        
+            pred_boxes = np.array([[]])
+
         # sort the boxes and the labels according to scores
         score_sort = np.argsort(-score)
         pred_labels = pred_labels[score_sort]
         pred_boxes  = pred_boxes[score_sort]
-        
+
         # copy detections to all_detections
         for label in range(generator.num_classes()):
             all_detections[i][label] = pred_boxes[pred_labels == label, :]
 
         annotations = generator.load_annotation(i)
-        
+
         # copy detections to all_annotations
         for label in range(generator.num_classes()):
             all_annotations[i][label] = annotations[annotations[:, 4] == label, :4].copy()
 
     # compute mAP by comparing all detections and all annotations
     average_precisions = {}
-    
+
     for label in range(generator.num_classes()):
         false_positives = np.zeros((0,))
         true_positives  = np.zeros((0,))
@@ -124,10 +124,10 @@ def evaluate(model,
         precision = true_positives / np.maximum(true_positives + false_positives, np.finfo(np.float64).eps)
 
         # compute average precision
-        average_precision  = compute_ap(recall, precision)  
+        average_precision  = compute_ap(recall, precision)
         average_precisions[label] = average_precision
 
-    return average_precisions    
+    return average_precisions
 
 def correct_yolo_boxes(boxes, image_h, image_w, net_h, net_w):
     if (float(net_w)/image_w) < (float(net_h)/image_h):
@@ -136,22 +136,22 @@ def correct_yolo_boxes(boxes, image_h, image_w, net_h, net_w):
     else:
         new_h = net_w
         new_w = (image_w*net_h)/image_h
-        
+
     for i in range(len(boxes)):
         x_offset, x_scale = (net_w - new_w)/2./net_w, float(new_w)/net_w
         y_offset, y_scale = (net_h - new_h)/2./net_h, float(new_h)/net_h
-        
+
         boxes[i].xmin = int((boxes[i].xmin - x_offset) / x_scale * image_w)
         boxes[i].xmax = int((boxes[i].xmax - x_offset) / x_scale * image_w)
         boxes[i].ymin = int((boxes[i].ymin - y_offset) / y_scale * image_h)
         boxes[i].ymax = int((boxes[i].ymax - y_offset) / y_scale * image_h)
-        
+
 def do_nms(boxes, nms_thresh):
     if len(boxes) > 0:
         nb_class = len(boxes[0].classes)
     else:
         return
-        
+
     for c in range(nb_class):
         sorted_indices = np.argsort([-box.classes[c] for box in boxes])
 
@@ -182,24 +182,24 @@ def decode_netout(netout, anchors, obj_thresh, net_h, net_w):
     for i in range(grid_h*grid_w):
         row = i // grid_w
         col = i % grid_w
-        
+
         for b in range(nb_box):
             # 4th element is objectness score
             objectness = netout[row, col, b, 4]
-            
+
             if(objectness <= obj_thresh): continue
-            
+
             # first 4 elements are x, y, w, and h
             x, y, w, h = netout[row,col,b,:4]
 
             x = (col + x) / grid_w # center position, unit: image width
             y = (row + y) / grid_h # center position, unit: image height
             w = anchors[2 * b + 0] * np.exp(w) / net_w # unit: image width
-            h = anchors[2 * b + 1] * np.exp(h) / net_h # unit: image height  
-            
+            h = anchors[2 * b + 1] * np.exp(h) / net_h # unit: image height
+
             # last elements are class probabilities
             classes = netout[row,col,b,5:]
-            
+
             box = BoundBox(x-w/2, y-h/2, x+w/2, y+h/2, objectness, classes)
 
             boxes.append(box)
@@ -207,7 +207,11 @@ def decode_netout(netout, anchors, obj_thresh, net_h, net_w):
     return boxes
 
 def preprocess_input(image, net_h, net_w):
-    new_h, new_w, _ = image.shape
+    new_h, new_w, channel = image.shape
+
+    if channel == 4:
+        # if channel contains alpha channel, drop it
+        image = image[:,:,:3]
 
     # determine the new size of the image
     if (float(net_w)/new_w) < (float(net_h)/new_h):
@@ -217,8 +221,14 @@ def preprocess_input(image, net_h, net_w):
         new_w = (new_w * net_h)//new_h
         new_h = net_h
 
+    # change the order of the channel in image
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    # normalize the image
+    image = image / 255.
+
     # resize the image to the new size
-    resized = cv2.resize(image[:,:,::-1]/255., (new_w, new_h))
+    resized = cv2.resize(image, (new_w, new_h))
 
     # embed the image into the standard letter box
     new_image = np.ones((net_h, net_w, 3)) * 0.5
@@ -229,7 +239,7 @@ def preprocess_input(image, net_h, net_w):
 
 def normalize(image):
     return image/255.
-       
+
 def get_yolo_boxes(model, images, net_h, net_w, anchors, obj_thresh, nms_thresh):
     image_h, image_w, _ = images[0].shape
     nb_images           = len(images)
@@ -237,7 +247,7 @@ def get_yolo_boxes(model, images, net_h, net_w, anchors, obj_thresh, nms_thresh)
 
     # preprocess the input
     for i in range(nb_images):
-        batch_input[i] = preprocess_input(images[i], net_h, net_w)        
+        batch_input[i] = preprocess_input(images[i], net_h, net_w)
 
     # run the prediction
     batch_output = model.predict_on_batch(batch_input)
@@ -256,11 +266,11 @@ def get_yolo_boxes(model, images, net_h, net_w, anchors, obj_thresh, nms_thresh)
         correct_yolo_boxes(boxes, image_h, image_w, net_h, net_w)
 
         # suppress non-maximal boxes
-        do_nms(boxes, nms_thresh)        
-           
+        do_nms(boxes, nms_thresh)
+
         batch_boxes[i] = boxes
 
-    return batch_boxes        
+    return batch_boxes
 
 def compute_overlap(a, b):
     """
@@ -287,8 +297,8 @@ def compute_overlap(a, b):
 
     intersection = iw * ih
 
-    return intersection / ua  
-    
+    return intersection / ua
+
 def compute_ap(recall, precision):
     """ Compute the average precision, given the recall and precision curves.
     Code originally from https://github.com/rbgirshick/py-faster-rcnn.
@@ -314,10 +324,10 @@ def compute_ap(recall, precision):
 
     # and sum (\Delta recall) * prec
     ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
-    return ap     
+    return ap
 
 def _softmax(x, axis=-1):
     x = x - np.amax(x, axis, keepdims=True)
     e_x = np.exp(x)
-    
+
     return e_x / e_x.sum(axis, keepdims=True)
