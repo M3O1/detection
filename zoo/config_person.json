@@ -1,0 +1,40 @@
+{
+    "model" : {
+        "min_input_size": 256,
+        "max_input_size": 384,
+        "anchors": [17, 43, 39, 99, 59, 196, 109, 150, 101, 278, 201, 230, 155, 346, 234, 373, 351, 373],
+        "labels": ["person"]
+    },
+
+    "train": {
+        "train_image_folder": "/home/ubuntu/data/crawled_selfie/images/",
+        "train_annot_folder": "/home/ubuntu/data/crawled_selfie/profiles",
+        "cache_name": "/home/ksj/projects/keras-yolo3/data/person_annotation.pkl",
+
+        "train_times": 10,
+        "batch_size": 16,
+        "learning_rate": 0.0001,
+        "nb_epochs": 100,
+        "warmup_epochs": 3,
+        "ignore_thresh": 0.5,
+        "gpus": "0",
+
+        "grid_scales": [1, 1, 1],
+        "obj_scale": 5,
+        "noobj_scale": 1,
+        "xywh_scale": 1,
+        "class_scale": 1,
+
+        "tensorboard_dir": "/home/ubuntu/log_person_detection",
+        "saved_weights_name": "/home/ubuntu/keras-yolo3/person.h5",
+        "debug": "true"
+    },
+
+    "valid": {
+        "valid_image_folder": "",
+        "valid_annot_folder": "",
+        "cache_name": "",
+
+        "valid_times": 1
+    }
+}
